@@ -383,7 +383,7 @@ class Commands:
             travelDistance = self.campaign['planets'][planetFrom]['connections'][planetTo]
             travelCost = (fleetStats[2] / self.hohmannMassRatio) * travelDistance
             if travelCost <= localFleet['resources']:
-                localPlayer['transit'].append({'planetTo': planetTo, 'type': 'hohmann', 'progress': 0,
+                localPlayer['transit'].append({'planetTo': planetTo, 'transitType': 'hohmann', 'progress': 0,
                                                'fleet': localFleet, 'name': fleetName})
                 localFleet['resources'] -= travelCost
                 del localPlayer['fleets'][fleetName]
@@ -412,7 +412,7 @@ class Commands:
                     self.campaign['planets'][planetTo]['players'][owner]['fleets'][fleetName] = localFleet
                     print(f'Fleet {fleetName} arrived at {planetTo} from {planetFrom}')
                 else:
-                    localPlayer['transit'].append({'planetTo': planetTo, 'type': 'brachistochrone', 'progress': 0,
+                    localPlayer['transit'].append({'planetTo': planetTo, 'transitType': 'brachistochrone', 'progress': 0,
                                                    'fleet': localFleet, 'name': fleetName})
                     print(f'Fleet {fleetName} queued for transit from {planetFrom} to {planetTo}')
                 localFleet['resources'] -= travelCost
@@ -447,30 +447,31 @@ class Commands:
             print('Some field (planet or player) does not exist, did you misspell anything?')
 
     def advance_turn(self):
+        # notify the user for turn end
         print(f"--------------------turn {self.campaign['turn']} ended--------------------")
         print(f"Calculating end of turn {self.campaign['turn']} and start of turn {self.campaign['turn'] + 1}")
-        for planet in self.campaign['planets']:
-            for faction in self.campaign['factions']:
-                for player in self.campaign['factions'][faction]:
-                    if faction == self.campaign['planets'][planet]['factionControl']:
-                        self.campaign['planets'][planet]['players'][player]['resources'] += \
-                            (self.campaign['planets'][planet]['value'] * self.resourceGenerationRatio) / \
-                            len(self.campaign['factions'][faction])
-                    localPlayer = self.campaign['planets'][planet]['players'][player]
-                    for ship, amount in localPlayer['production'].items():
-                        if ship in self.campaign['planets'][planet]['players'][player]['ships']:
-                            localPlayer['ships'][ship] += amount
-                        else:
-                            localPlayer['ships'][ship] = amount
-                        print(f"Production of {ship}, (x{amount}) has been finished at {planet}")
-                        localPlayer['production'] = {}
 
+        # bunch of nested for loops to hit every player on every planet
+        for faction in self.campaign['factions']:
+            for planet in self.campaign['planets']:
+                localPlanet = self.campaign['planets'][planet]
+                for player in self.campaign['factions'][faction]:
+                    localPlayer = localPlanet['players'][player]
+                    # note: look into moving all logic here into their own private methods for cleaner code
+
+                    # add resources to whichever faction owns the team
+                    if faction == localPlanet['factionControl']:
+                        totalGenerated = localPlanet['value'] * self.resourceGenerationRatio
+                        localPlayer['resources'] += totalGenerated / len(self.campaign['factions'][faction])
+
+                    # move fleets transferring to another body
                     for fleet in localPlayer['transit']:
-                        if fleet['type'] == 'hohmann':
+                        if fleet['transitType'] == 'hohmann':
                             fleet['progress'] += 1
-                        elif fleet['type'] == 'brachistochrone':
+                        elif fleet['transitType'] == 'brachistochrone':
                             fleet['progress'] += 2
-                        if fleet['progress'] == self.campaign['planets'][planet]['connections'][fleet['planetTo']]:
+
+                        if fleet['progress'] >= localPlanet['connections'][fleet['planetTo']]:
                             self.campaign['planets'][fleet['planetTo']]['players'][player]['fleets'][fleet['name']] = fleet['fleet']
                             localPlayer['transit'].remove(fleet)
                             print(f"Fleet {fleet['name']} has arrived at {fleet['planetTo']} from {planet}")
@@ -478,5 +479,21 @@ class Commands:
                             print(f"Fleet {fleet['name']} has traveled {fleet['progress']} out of "
                                   f"{self.campaign['planets'][planet]['connections'][fleet['planetTo']]} to "
                                   f"{fleet['planetTo']} from {planet}")
-        print(f"--------------------start turn {self.campaign['turn'] + 1}--------------------")
+
+                    # future battle logic goes here for wanted turn order
+
+                    # finish production of ships queued last turn
+                    for ship, amount in localPlayer['production'].items():
+                        if ship in localPlayer['ships']:
+                            localPlayer['ships'][ship] += amount
+                        else:
+                            localPlayer['ships'][ship] = amount
+                        print(f"Production of {ship}, (x{amount}) has been finished at {planet}")
+                    # reset the production queue
+                    localPlayer['production'] = {}
         self.campaign['turn'] += 1
+        # notify the user that the next turn is starting
+        print(f"--------------------start turn {self.campaign['turn'] + 1}--------------------")
+        # save the campaign (look into saving more times and opening/closing the shelve dynamically as users will not input all commands
+        # instantly like the controller currently does)
+        self.campaign.sync()
