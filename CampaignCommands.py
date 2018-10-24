@@ -36,16 +36,16 @@ class Commands:
         # Add the dicts if they do not exist, don't overwrite if there is already data
         if 'planets' not in self.campaign:
             self.campaign['planets'] = {}
-        if 'factions' not in self.campaign:
-            self.campaign['factions'] = {}
+        if 'players' not in self.campaign:
+            self.campaign['players'] = {}
         if 'ships' not in self.campaign:
             self.campaign['ships'] = {}
         if 'turn' not in self.campaign:
             self.campaign['turn'] = 0
 
-    def add_planet(self, name: str, value: int, factionControl: str, factionAllegiance: str):
+    def add_planet(self, planet: str, value: int, factionControl: str, factionAllegiance: str):
         """ Add a planet to the campaign
-        :param name: name of planet
+        :param planet: name of planet
         :param value: value stat of the planet, each faction receives x10 this value per turn
         :param factionControl: faction that currently controls this planet
         :param factionAllegiance: faction that the planet is aligned to
@@ -53,29 +53,28 @@ class Commands:
         """
 
         # add the planet to the dict
-        self.campaign['planets'][name] = {}
-        # and reference it for later
-        newPlanet = self.campaign['planets'][name]
-        # assign the value stat, factions, connections, and players to the planet
-        newPlanet['value'] = value
-        newPlanet['factionControl'] = factionControl
-        newPlanet['factionAllegiance'] = factionAllegiance
-        newPlanet['connections'] = {}
-        newPlanet['players'] = {}
+        self.campaign['planets'][planet] = {}
+        localPlanet = self.campaign['planets'][planet]
 
-        # in case a planet is added after players have been added
-        for faction in self.campaign['factions']:
-            for player in self.campaign['factions'][faction]:
-                # add all the stats from every player to the planet
-                newPlanet['players'][player] = {}
-                newPlanet['players'][player]['resources'] = 0
-                newPlanet['players'][player]['ships'] = {}
-                newPlanet['players'][player]['fleets'] = {}
-                newPlanet['players'][player]['production'] = {}
-                newPlanet['players'][player]['transit'] = []
+        # assign the value stat, factions, connections, and dicts to the planet
+        localPlanet['value'] = value
+        localPlanet['factionControl'] = factionControl
+        localPlanet['factionAllegiance'] = factionAllegiance
+        localPlanet['connections'] = {}
+        localPlanet['resources'] = {}
+        localPlanet['ships'] = {}
+        localPlanet['fleets'] = {}
+        localPlanet['production'] = {}
 
+        # assign all the starting vars for the player
+        for player in self.campaign['players']:
+            localPlanet['resources'][player] = 0
+            localPlanet['ships'][player] = {}
+            localPlanet['fleets'][player] = {}
+            localPlanet['production'][player] = {}
+            
         # return a message for the added planet
-        print(f"Planet {name} added")
+        print(f"Planet {planet} added")
 
     def add_connection(self, planet1: str, planet2: str, distance: int):
         """ Add a connection from a planet to another
@@ -97,7 +96,7 @@ class Commands:
             # therefore return a message informing that a planet does not exist
             print('One or both planets does not exist, did you misspell anything?')
 
-    def add_player(self, name: str, faction: str):
+    def add_player(self, player: str, faction: str):
         """ Add a player to the campaign
         :param name: name of player
         :param faction: faction the player is in
@@ -105,43 +104,43 @@ class Commands:
         """
 
         # add the faction to the dict if it does not exist
-        if faction not in self.campaign['factions']:
-            self.campaign['factions'][faction] = []
-        # then add the player to the faction
-        self.campaign['factions'][faction].append(name)
+        if player not in self.campaign['players']:
+            self.campaign['players'][player] = {'faction': faction}
 
         # then for every planet
         for planet in self.campaign['planets']:
-            # if the player added is not already listed in the planet
-            if name not in self.campaign['planets'][planet]['players']:
-                # assign all the starting vars for the player
-                self.campaign['planets'][planet]['players'][name] = {}
-                self.campaign['planets'][planet]['players'][name]['resources'] = 0
-                self.campaign['planets'][planet]['players'][name]['ships'] = {}
-                self.campaign['planets'][planet]['players'][name]['fleets'] = {}
-                self.campaign['planets'][planet]['players'][name]['production'] = {}
-                self.campaign['planets'][planet]['players'][name]['transit'] = []
-        # return a message for the added player
-        print(f"Player {name} added")
+            localPlanet = self.campaign['planets'][planet]
+            # if the player added is not already listed in the planet, assign all the starting vars for the player
+            if player not in localPlanet['resources']:
+                localPlanet['resources'][player] = 0
+            if player not in localPlanet['ships']:
+                localPlanet['ships'][player] = {}
+            if player not in localPlanet['fleets']:
+                localPlanet['fleets'][player] = {}
+            if player not in localPlanet['production']:
+                localPlanet['production'][player] = {}
 
-    def add_ship_to_campaign(self, name: str, points: int, resStorage: int, mass: int):
+        # return a message for the added player
+        print(f"Player {player} added")
+
+    def add_ship_to_campaign(self, ship: str, points: int, resStorage: int, mass: int):
         """ Add a ship to the campaign database
-        :param name: name of the ship
+        :param ship: name of the ship
         :param points: points value of the ship
         :param resStorage: max resource storage of the ship
         :param mass: mass of the ship
         :return: None
         """
         # add the ship to the dict
-        self.campaign['ships'][name] = {'points': points, 'resStorage': resStorage, 'mass': mass}
+        self.campaign['ships'][ship] = {'points': points, 'resStorage': resStorage, 'mass': mass}
         # return a message for the added ship to the database
-        print(f"Ship {name} added to the campaign database")
+        print(f"Ship {ship} added to the campaign database")
 
-    def cheat_in_ship(self, planet: str, owner: str, name: str, amount: int):
+    def cheat_in_ship(self, planet: str, player: str, ship: str, amount: int):
         """ Cheat in ship(s) for a player on a planet instantly without spending resources
         :param planet: planet of the spawned ship(s)
-        :param owner: player owning the ship(s)
-        :param name: name of the ship(s)
+        :param player: player receiving the ship(s)
+        :param ship: name of the ship(s)
         :param amount: amount of ships(s)
         :return: None
         """
@@ -149,26 +148,27 @@ class Commands:
         # wrap everything in a try block to catch any KeyErrors
         try:
             # test if the ship is currently in the database
-            if 'ships' in self.campaign and name in self.campaign['ships']:
+            if 'ships' in self.campaign and ship in self.campaign['ships']:
+                localPlayer = self.campaign['planets'][planet]['ships'][player]
                 # if so spawn in the ship to the player on the planet requested
-                if name in self.campaign['planets'][planet]['players'][owner]['ships']:
-                    self.campaign['planets'][planet]['players'][owner]['ships'][name] += amount
+                if ship in localPlayer:
+                    localPlayer[ship] += amount
                 else:
-                    self.campaign['planets'][planet]['players'][owner]['ships'][name] = amount
+                    localPlayer[ship] = amount
                 # return a message for the spawned ship
-                print(f"Ship {name} (x{amount}) spawned in on {planet} for {owner}")
+                print(f"Ship {ship} (x{amount}) spawned in on {planet} for {player}")
             # if not, then return a message informing that the ship isn't added yet
             else:
-                print(f"Ship {name} not recognized, have you added the ship to this campaign?")
+                print(f"Ship {ship} not recognized, have you added the ship to this campaign?")
         # if there was a KeyError then some planet or player does not exist
         except KeyError:
             # therefore return a message informing that a planet or player does not exist
             print('Some field (planet or player) does not exist, did you misspell anything?')
 
-    def cheat_in_resources(self, planet: str, owner: str, amount: int):
+    def cheat_in_resources(self, planet: str, player: str, amount: int):
         """ Cheat in resources for a player on a planet instantly
         :param planet: planet of the spawned resources
-        :param owner: player owning the resources
+        :param player: player receiving the resources
         :param amount: amount of resources spawned
         :return: None
         """
@@ -176,18 +176,18 @@ class Commands:
         # wrap everything in a try block to catch any KeyErrors
         try:
             # spawn in the resources to the player on the planet requested
-            self.campaign['planets'][planet]['players'][owner]['resources'] += amount
+            self.campaign['planets'][planet]['resources'][player] += amount
             # return a message for the spawned resources
-            print(f"{amount} resources spawned in on {planet} for {owner}")
+            print(f"{amount} resources spawned in on {planet} for {player}")
         # if there was a KeyError then some planet or player does not exist
         except KeyError:
             # therefore return a message informing that a planet or player does not exist
             print('Some field (planet or player) does not exist, did you misspell anything?')
 
-    def make_ship(self, planet: str, owner: str, name: str, amount: int):
+    def make_ship(self, planet: str, player: str, name: str, amount: int):
         """ Queue production of ship(s) for a player on a planet by spending resources equal to points of the ship(s)
         :param planet: planet of the spawned ship(s)
-        :param owner: player owning the ship(s)
+        :param player: player receiving the ship(s)
         :param name: name of the ship(s)
         :param amount: amount of ships(s)
         :return: None
@@ -195,38 +195,43 @@ class Commands:
 
         # wrap everything in a try block to catch any KeyErrors
         try:
-            can_build = False
-            for faction, playerList in self.campaign['factions'].items():
-                if owner in playerList and faction == self.campaign['planets'][planet]['factionControl']:
-                    can_build = True
+            # assume the user can make the ship
+            can_build = True
+
+            # test if the planet in under the user's faction's control
+            planetFaction = self.campaign['planets'][planet]['factionControl']
+            if self.campaign['players'][player]['faction'] != planetFaction:
+                can_build = False
+                print(f'Planet controlled by {planetFaction}, {player} can not built here')
+
+            # test if the ship is currently in the database
+            if name not in self.campaign['ships']:
+                can_build = False
+                print('Ship not recognized, have you added the ship to this campaign?')
+
+            # test if the player has enough resources
+            localResources = self.campaign['planets'][planet]['resources']
+            if self.campaign['ships'][name]['points'] * amount > localResources[player]:
+                can_build = False
+                print(f"Not enough resources on {planet} for production of {amount} {name}'s")
 
             if can_build:
-                # test if the ship is currently in the database
-                if 'ships' in self.campaign and name in self.campaign['ships']:
-                    # and then check if the player has enough resources
-                    localPlayer = self.campaign['planets'][planet]['players'][owner]
-                    if self.campaign['ships'][name]['points'] * amount > localPlayer['resources']:
-                        # if not, return a message informing not enough resources for the production
-                        print(f"Not enough resources for production of {amount} {name}'s")
-                    else:
-                        # if so queue the ship for production for the player on the planet requested
-                        if name in localPlayer['production']:
-                            localPlayer['production'][name] += amount
-                        else:
-                            localPlayer['production'][name] = amount
-                        # and deduct the resources from the player who queued the ship(s) on the planet requested
-                            localPlayer['resources'] -= self.campaign['ships'][name]['points'] * amount
-                        # return a message for the spawned ship
-                        print(f"Ship {name} (x{amount}) queued for production on {planet} for {owner}")
-                # if not, then return a message informing that the ship isn't added yet
+                localProduction = self.campaign['planets'][planet]['production'][player]
+                # if so queue the ship for production for the player on the planet requested
+                if name in localProduction:
+                    localProduction[name] += amount
                 else:
-                    print('Ship not recognized, have you added the ship to this campaign?')
-            else:
-                print('Planet not controlled by requesters faction')
+                    localProduction[name] = amount
+                    # and deduct the resources from the player who queued the ship(s) on the planet requested
+                    localResources[player] -= self.campaign['ships'][name]['points'] * amount
+                # return a message for the spawned ship
+                print(f"Ship {name} (x{amount}) queued for production on {planet} for {player}")
         # if there was a KeyError then some planet or player does not exist
         except KeyError:
             # therefore return a message informing that a planet or player does not exist
             print('Some field (planet or player) does not exist, did you misspell anything?')
+
+    # Not yet refactored after this point
 
     def make_fleet(self, planet: str, owner: str, name: str, ships: dict):
         """ Make a fleet for a player on a planet with ship(s) owned by said player and on said planet
