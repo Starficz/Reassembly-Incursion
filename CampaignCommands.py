@@ -105,7 +105,7 @@ class Commands:
 
         # add the faction to the dict if it does not exist
         if player not in self.campaign['players']:
-            self.campaign['players'][player] = {'faction': faction}
+            self.campaign['players'][player] = {'faction': faction, 'transit': []}
 
         # then for every planet
         for planet in self.campaign['planets']:
@@ -238,7 +238,7 @@ class Commands:
     def make_fleet(self, planet: str, player: str, fleet: str, ships: dict):
         """ Make a fleet for a player on a planet with ship(s) owned by said player and on said planet
         :param planet: planet of the fleet
-        :param player player owning the fleet
+        :param player: player who controls the fleet
         :param fleet: name of the fleet
         :param ships: dict of ship names as keys and ship amounts as values
         :return: None
@@ -400,83 +400,91 @@ class Commands:
 
     # not refactored below this point
 
-    def hohmann_fleet_transfer(self, owner: str, fleetName: str, planetFrom: str, planetTo: str):
+    def hohmann_fleet_transfer(self, player: str, fleetName: str, planetFrom: str, planetTo: str):
         """ Queue a hohmann fleet transfer from one planet to another
-        :param owner: player owning the fleet
+        :param player: player who controls the fleet
         :param fleetName: name of the fleet
         :param planetFrom: planet the fleet is currently at
         :param planetTo: planet the fleet is traveling to
         :return: None
         """
         try:
-            localPlayer = self.campaign['planets'][planetFrom]['players'][owner]
-            localFleet = localPlayer['fleets'][fleetName]
-            fleetStats = self.calculate_fleet_stats(localFleet)
+            localFleets = self.campaign['planets'][planetFrom]['fleets']
+            localPlayer = self.campaign['players'][player]
             travelDistance = self.campaign['planets'][planetFrom]['connections'][planetTo]
-            travelCost = (fleetStats[2] / self.hohmannMassRatio) * travelDistance
-            if travelCost <= localFleet['resources']:
-                localPlayer['transit'].append({'planetTo': planetTo, 'transitType': 'hohmann', 'progress': 0,
-                                               'fleet': localFleet, 'name': fleetName})
-                localFleet['resources'] -= travelCost
-                del localPlayer['fleets'][fleetName]
+            costPerUnit = self.calculate_fleet_stats(localFleets[player][fleetName])['fleetMass'] / self.hohmannMassRatio
+            travelCost = costPerUnit * travelDistance
+            if travelCost <= localFleets[player][fleetName]['resources']:
+                localPlayer['transit'].append({'planetFrom': planetFrom, 'planetTo': planetTo, 'transitType': 'hohmann', 'progress': 0,
+                                               'costPerUnit': costPerUnit, 'fleet': localFleets[player][fleetName], 'name': fleetName})
+                del localFleets[player][fleetName]
                 print(f'Fleet {fleetName} queued for transit from {planetFrom} to {planetTo}')
             else:
-                print(f"Not enough resources to move fleet, required:{travelCost}, Fleet currently has:{localFleet['resources']}")
+                print(f"Not enough resources on fleet {fleetName} to move from {planetFrom} to {planetTo}")
         except KeyError:
             print('Some field (planet / player/ fleet) does not exist, did you misspell anything?')
 
-    def brachistochrone_fleet_transfer(self, owner: str, fleetName: str, planetFrom: str, planetTo: str):
+    def brachistochrone_fleet_transfer(self, player: str, fleetName: str, planetFrom: str, planetTo: str):
         """ Queue a brachistochrone fleet transfer from one planet to another, special case for distance 1 transfers
-        :param owner: player owning the fleet
+        :param player: player who controls the fleet
         :param fleetName: name of the fleet
         :param planetFrom: planet the fleet is currently at
         :param planetTo: planet the fleet is traveling to
         :return: None
         """
         try:
-            localPlayer = self.campaign['planets'][planetFrom]['players'][owner]
-            localFleet = localPlayer['fleets'][fleetName]
-            fleetStats = self.__calculate_fleet_stats(localFleet)
+            localFleets = self.campaign['planets'][planetFrom]['fleets']
+            localPlayer = self.campaign['players'][player]
             travelDistance = self.campaign['planets'][planetFrom]['connections'][planetTo]
-            travelCost = (fleetStats[2] / self.brachistochroneMassRatio) * travelDistance
-            if travelCost <= localFleet['resources']:
+            costPerUnit = self.calculate_fleet_stats(localFleets[player][fleetName])['fleetMass'] / self.brachistochroneMassRatio
+            travelCost = costPerUnit * travelDistance
+            if travelCost <= localFleets[player][fleetName]['resources']:
                 if travelDistance == 1:
-                    self.campaign['planets'][planetTo]['players'][owner]['fleets'][fleetName] = localFleet
-                    print(f'Fleet {fleetName} arrived at {planetTo} from {planetFrom}')
+                    localFleets[player][fleetName]['resources'] -= travelCost
+                    self.campaign['planets'][planetTo]['fleets'][player][fleetName] = localFleets[player][fleetName]
+                    print(f'Fleet {fleetName} arrived on {planetTo} from {planetFrom}')
                 else:
-                    localPlayer['transit'].append({'planetTo': planetTo, 'transitType': 'brachistochrone', 'progress': 0,
-                                                   'fleet': localFleet, 'name': fleetName})
+                    localPlayer['transit'].append(
+                        {'planetFrom': planetFrom, 'planetTo': planetTo, 'transitType': 'brachistochrone', 'progress': 0,
+                         'costPerUnit': costPerUnit, 'fleet': localFleets[player][fleetName], 'name': fleetName})
                     print(f'Fleet {fleetName} queued for transit from {planetFrom} to {planetTo}')
-                localFleet['resources'] -= travelCost
-                del localPlayer['fleets'][fleetName]
+
+                del localFleets[player][fleetName]
             else:
-                print(f"Not enough resources to move fleet, required:{travelCost}, Fleet currently has:{localFleet['resources']}")
+                print(f"Not enough resources on fleet {fleetName} to move from {planetFrom} to {planetTo}")
         except KeyError:
             print('Some field (planet / player/ fleet) does not exist, did you misspell anything?')
 
-    def scrap_ship(self, planet: str, owner: str, name: str, amount: int):
+    def scrap_ship(self, planet: str, player: str, ship: str, amount: int):
         """ Scrap ship(s) restoring the scrap ratio to the player who owns it
         :param planet: planet of the ship(s)
-        :param owner: player owning the ship(s)
-        :param name: name of the ship(s)
+        :param player: player who controls the ship(s)
+        :param ship: name of the ship(s)
         :param amount: amount of ships(s) scraped
         :return: None
         """
         try:
-            if 'ships' in self.campaign and name in self.campaign['ships']:
-                localPlayer = self.campaign['planets'][planet]['players'][owner]
-                if name in localPlayer['ships'] and \
-                        amount <= localPlayer['ships'][name]:
-                    localPlayer['ships'][name] -= amount
-                    resources = amount * self.campaign['ships'][name]['points'] * self.scrapRatio
-                    localPlayer['resources'] += resources
-                    print(f'Ship {name} (x{amount}) scraped returning {resources} resources on {planet} for {owner}')
-                else:
-                    print('Not enough ship(s) for scraping')
-            else:
-                print('Ship not recognized, have you added the ship to this campaign?')
+            canScrap = True
+
+            localShips = self.campaign['planets'][planet]['ships']
+            localResources = self.campaign['planets'][planet]['resources']
+            if 'ships' not in self.campaign and ship not in self.campaign['ships']:
+                canScrap = False
+                print('Ship not recognized, did you misspell anything?')
+            elif amount > localShips[player][ship]:
+                canScrap = False
+                print(f'Non enough ships on {planet} to scrap')
+
+            if canScrap:
+                localShips[player][ship] -= amount
+                resourcesRecovered = amount * self.campaign['ships'][ship]['points'] * self.scrapRatio
+                localResources[player] += resourcesRecovered
+                print(f'Ship {ship} (x{amount}) scraped returning {resourcesRecovered} resources on {planet} for {player}')
+
         except KeyError:
             print('Some field (planet or player) does not exist, did you misspell anything?')
+
+    # Advanced Turn still is not factored for the new data structure, but everything else should be
 
     def advance_turn(self):
         # notify the user for turn end
