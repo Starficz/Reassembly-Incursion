@@ -10,7 +10,7 @@ class Commands:
         self.brachistochroneMassRatio = 15
         self.hohmannMassRatio = 30
 
-    def __calculate_fleet_stats(self, fleet: dict):
+    def calculate_fleet_stats(self, fleet: dict):
         totalPoints = 0
         totalResourceStorage = 0
         totalMass = 0
@@ -20,7 +20,7 @@ class Commands:
                     totalPoints += (shipStats['points'] * shipAmount)
                     totalResourceStorage += (shipStats['resStorage'] * shipAmount)
                     totalMass += (shipStats['mass'] * shipAmount)
-        return [totalPoints, totalResourceStorage, totalMass]
+        return {'fleetPoints': totalPoints, 'fleetStorage': totalResourceStorage, 'fleetMass': totalMass}
 
     def open_campaign(self, file: str):
         self.campaign = shelve.open(file, writeback=True)
@@ -98,7 +98,7 @@ class Commands:
 
     def add_player(self, player: str, faction: str):
         """ Add a player to the campaign
-        :param name: name of player
+        :param player: name of player
         :param faction: faction the player is in
         :return: None
         """
@@ -149,12 +149,12 @@ class Commands:
         try:
             # test if the ship is currently in the database
             if 'ships' in self.campaign and ship in self.campaign['ships']:
-                localPlayer = self.campaign['planets'][planet]['ships'][player]
+                localShips = self.campaign['planets'][planet]['ships']
                 # if so spawn in the ship to the player on the planet requested
-                if ship in localPlayer:
-                    localPlayer[ship] += amount
+                if ship in localShips[player]:
+                    localShips[player][ship] += amount
                 else:
-                    localPlayer[ship] = amount
+                    localShips[player][ship] = amount
                 # return a message for the spawned ship
                 print(f"Ship {ship} (x{amount}) spawned in on {planet} for {player}")
             # if not, then return a message informing that the ship isn't added yet
@@ -184,11 +184,11 @@ class Commands:
             # therefore return a message informing that a planet or player does not exist
             print('Some field (planet or player) does not exist, did you misspell anything?')
 
-    def make_ship(self, planet: str, player: str, name: str, amount: int):
+    def make_ship(self, planet: str, player: str, ship: str, amount: int):
         """ Queue production of ship(s) for a player on a planet by spending resources equal to points of the ship(s)
         :param planet: planet of the spawned ship(s)
         :param player: player receiving the ship(s)
-        :param name: name of the ship(s)
+        :param ship: name of the ship(s)
         :param amount: amount of ships(s)
         :return: None
         """
@@ -196,48 +196,50 @@ class Commands:
         # wrap everything in a try block to catch any KeyErrors
         try:
             # assume the user can make the ship
-            can_build = True
+            canMakeShip = True
+
+            # assign needed vars
+            planetFaction = self.campaign['planets'][planet]['factionControl']
+            playerFaction = self.campaign['players'][player]['faction']
+            localResources = self.campaign['planets'][planet]['resources']
+            localProduction = self.campaign['planets'][planet]['production']
 
             # test if the planet in under the user's faction's control
-            planetFaction = self.campaign['planets'][planet]['factionControl']
-            if self.campaign['players'][player]['faction'] != planetFaction:
-                can_build = False
+            if playerFaction != planetFaction:
+                canMakeShip = False
                 print(f'Planet controlled by {planetFaction}, {player} can not built here')
 
             # test if the ship is currently in the database
-            if name not in self.campaign['ships']:
-                can_build = False
+            if ship not in self.campaign['ships']:
+                canMakeShip = False
                 print('Ship not recognized, have you added the ship to this campaign?')
 
             # test if the player has enough resources
-            localResources = self.campaign['planets'][planet]['resources']
-            if self.campaign['ships'][name]['points'] * amount > localResources[player]:
-                can_build = False
-                print(f"Not enough resources on {planet} for production of {amount} {name}'s")
+            if self.campaign['ships'][ship]['points'] * amount > localResources[player]:
+                canMakeShip = False
+                print(f"Not enough resources on {planet} for production of {amount} {ship}'s")
 
-            if can_build:
-                localProduction = self.campaign['planets'][planet]['production'][player]
-                # if so queue the ship for production for the player on the planet requested
-                if name in localProduction:
-                    localProduction[name] += amount
+            # if the ship(s) can still be made, do so
+            if canMakeShip:
+                # queue the ship for production for the player on the planet requested
+                if ship in localProduction[player]:
+                    localProduction[player][ship] += amount
                 else:
-                    localProduction[name] = amount
+                    localProduction[player][ship] = amount
                     # and deduct the resources from the player who queued the ship(s) on the planet requested
-                    localResources[player] -= self.campaign['ships'][name]['points'] * amount
+                    localResources[player] -= self.campaign['ships'][ship]['points'] * amount
                 # return a message for the spawned ship
-                print(f"Ship {name} (x{amount}) queued for production on {planet} for {player}")
+                print(f"Ship {ship} (x{amount}) queued for production on {planet} for {player}")
         # if there was a KeyError then some planet or player does not exist
         except KeyError:
             # therefore return a message informing that a planet or player does not exist
             print('Some field (planet or player) does not exist, did you misspell anything?')
 
-    # Not yet refactored after this point
-
-    def make_fleet(self, planet: str, owner: str, name: str, ships: dict):
+    def make_fleet(self, planet: str, player: str, fleet: str, ships: dict):
         """ Make a fleet for a player on a planet with ship(s) owned by said player and on said planet
         :param planet: planet of the fleet
-        :param owner: player owning the fleet
-        :param name: name of the fleet
+        :param player player owning the fleet
+        :param fleet: name of the fleet
         :param ships: dict of ship names as keys and ship amounts as values
         :return: None
         """
@@ -246,132 +248,157 @@ class Commands:
         try:
             # assume that the requested fleet can be made
             canMakeFleet = True
-            # then check if the ships requested for the fleet can be made from the ships that the player owns
-            localPlayer = self.campaign['planets'][planet]['players'][owner]
+
+            # assign needed vars
+            localShips = self.campaign['planets'][planet]['ships']
+            localFleet = self.campaign['planets'][planet]['fleets']
+
+            # test if the ships requested for the fleet can be made from the ships that the player owns
             for shipNameNeeded, shipAmountNeeded in ships.items():
                 # if the ship isn't there at all, then the fleet can't be made
-                if shipNameNeeded not in localPlayer['ships']:
+                if shipNameNeeded not in localShips[player]:
                     canMakeFleet = False
+
                 # if the amount of ships present is lower then the ships wanted in the fleet, then the fleet can't be made
-                for shipName, shipAmount in localPlayer['ships'].items():
+                for shipName, shipAmount in localShips[player].items():
                     if shipName == shipNameNeeded and shipAmount < shipAmountNeeded:
                         canMakeFleet = False
 
-            # if the fleet can be made and is unique
-            if canMakeFleet and name not in localPlayer['fleets']:
+            # if those tests failed, then there is not enough ships to make the fleet
+            if not canMakeFleet:
+                print(f'Not enough ships on {planet} to make fleet')
+
+            # test if this fleet already exists
+            if fleet in localFleet[player]:
+                canMakeFleet = False
+                print(f'Fleet {fleet} already exists, choose another fleet name')
+
+            # if the fleet can still be made, do so
+            if canMakeFleet:
                 # then add the base values and dict for the fleet
-                localPlayer['fleets'][name] = {'resources': 0, 'ships': {}}
+                localFleet[player][fleet] = {'resources': 0, 'ships': {}}
                 # then for every ship requested
                 for shipName, shipAmount in ships.items():
                     # add the ship to the fleet
-                    localPlayer['fleets'][name]['ships'][shipName] = shipAmount
+                    localFleet[player][fleet]['ships'][shipName] = shipAmount
                     # and subtract the ship(s) from the player
-                    localPlayer['ships'][shipName] -= shipAmount
+                    localShips[player][shipName] -= shipAmount
+                    # remove the entry in the dict if there are no more ships
+                    if localShips[player][shipName] == 0:
+                        del localShips[player][shipName]
                 # return a message for the newly made fleet
-                print(f'Fleet {name} created on {planet} for {owner}')
-            # if not, then return a message informing that the fleet can't be made with available ships or isn't unique
-            else:
-                print('Not enough ships at planet to make fleet or fleet already exists, did you misspell anything?')
+                print(f'Fleet {fleet} created on {planet} for {player}')
+
         # if there was a KeyError then some planet or player does not exist
         except KeyError:
             # therefore return a message informing that a planet or player does not exist
             print('Some field (planet or player) does not exist, did you misspell anything?')
 
-    def disband_fleet(self, planet: str, owner: str, name: str):
+    def disband_fleet(self, planet: str, player: str, fleet: str):
         """ Disband a fleet for a player on a planet returning the resources and
         ships in the fleet to said player and on said planet
         :param planet: planet of the fleet
-        :param owner: player owning the fleet
-        :param name: name of the fleet
+        :param player: player who controls the fleet
+        :param fleet: name of the fleet
         :return: None
         """
 
         # wrap everything in a try block to catch any KeyErrors
         try:
-            # if the fleet exists where it claims to exist
-            localPlayer = self.campaign['planets'][planet]['players'][owner]
-            if name in localPlayer['fleets']:
-                # then add the ships in the fleet to the player and planet of where said fleet is
-                for shipName, shipAmount in localPlayer['fleets'][name]['ships'].items():
-                    if shipName in localPlayer['ships']:
-                        localPlayer['ships'][shipName] += shipAmount
-                    else:
-                        localPlayer['ships'][shipName] = shipAmount
-                # also add all the resources the fleet has to the planet
-                localPlayer['resources'] += localPlayer['fleets'][name]['resources']
-                # then remove the fleet
-                del localPlayer['fleets'][name]
-                print(f'Fleet {name} disbanded on {planet}')
-            # if not, return a message informing that the fleet does not exist
-            else:
+            # assume that the fleet can be disbanded
+            canDisbandFleet = True
+
+            # assign needed vars
+            localShips = self.campaign['planets'][planet]['ships']
+            localFleets = self.campaign['planets'][planet]['fleets']
+            localResources = self.campaign['planets'][planet]['resources']
+
+            # test if the fleet exists where the user said it is
+            if fleet not in localFleets[player]:
+                canDisbandFleet = False
                 print('Fleet not recognized, did you misspell anything?')
+
+            # if the fleet can still be disbanded, do so
+            if canDisbandFleet:
+                # then add the ships in the fleet to the player and planet of where said fleet is
+                for shipName, shipAmount in localFleets[player][fleet]['ships'].items():
+                    if shipName in localShips[player]:
+                        localShips[player][shipName] += shipAmount
+                    else:
+                        localShips[player][shipName] = shipAmount
+                # also add all the resources the fleet has to the planet
+                localResources[player] += localFleets[player][fleet]['resources']
+                # then remove the fleet
+                del localFleets[player][fleet]
+                # return a message for the disbanded fleet
+                print(f'Fleet {fleet} disbanded on {planet}')
+
         # if there was a KeyError then some planet or player does not exist
         except KeyError:
             # therefore return a message informing that a planet or player does not exist
             print('Some field (planet / player) does not exist, did you misspell anything?')
 
-    def transfer_resources(self, planet: str, amount: int, ownerFrom: str, locationFrom: str, ownerTo: str, locationTo):
+    def transfer_resources(self, planet: str, amount: int, playerFrom: str, locationFrom: str, playerTo: str, locationTo):
         """ Transfer resources between 2 resource pools (on fleet or planet) between any 2 players (can be the same player)
         :param planet: planet where the resources are transferred
         :param amount: amount of resources transferred
-        :param ownerFrom: player transferring from
+        :param playerFrom: player transferring from
         :param locationFrom: fleet/planet transferring from
-        :param ownerTo: player transferring to
+        :param playerTo: player transferring to
         :param locationTo: fleet/planet transferring to
         :return: None
         """
 
         # wrap everything in a try block to catch any KeyErrors
         try:
-            # setup the local players and assume the the transfer is valid
-            playerFrom = self.campaign['planets'][planet]['players'][ownerFrom]
-            playerTo = self.campaign['planets'][planet]['players'][ownerTo]
+            # assume the the transfer is valid
             canTransfer = True
 
-            # disallow the transfer if the fleet does not exist or the resources are more then the fleet has storage space
-            if locationTo != 'planet' and locationTo not in playerTo['fleets']:
-                canTransfer = False
-            elif locationFrom != 'planet' and locationFrom not in playerFrom['fleets']:
-                canTransfer = False
-            elif locationFrom in playerFrom['fleets'] and amount > playerFrom['fleets'][locationFrom]['resources']:
-                canTransfer = False
-            elif locationTo in playerTo['fleets'] and amount > (self.__calculate_fleet_stats(playerTo['fleets'][locationTo])[1] -
-                                                                playerTo['fleets'][locationTo]['resources']):
-                canTransfer = False
+            # assign needed vars
+            localFleets = self.campaign['planets'][planet]['fleets']
+            localResources = self.campaign['planets'][planet]['resources']
+            playerFrom = self.campaign['planets'][planet]['players'][playerFrom]
+            playerTo = self.campaign['planets'][planet]['players'][playerTo]
 
-            # if the transfer was not disallowed
+            # test if the transfer is valid
+            if locationFrom != planet and locationFrom not in localFleets[playerFrom]:
+                canTransfer = False
+                print('Sending fleet or planet not recognized, did you misspell anything?')
+            elif locationTo != planet and locationTo not in localFleets[playerTo]:
+                canTransfer = False
+                print('Receiving fleet or planet not recognized, did you misspell anything?')
+            elif locationFrom == planet and amount > localResources[playerFrom]:
+                canTransfer = False
+                print(f'Not enough resources on Planet {planet} for {playerFrom} to transfer')
+            elif locationFrom in localFleets[playerFrom] and amount > localFleets[playerFrom][locationFrom]['resources']:
+                canTransfer = False
+                print(f'Not enough resources in Fleet {locationFrom} for {playerFrom} to transfer')
+            elif locationTo in localFleets[playerTo] and amount > (self.calculate_fleet_stats(locationTo)['fleetStorage'] -
+                                                                   localFleets[playerTo][locationTo]['resources']):
+                canTransfer = False
+                print(f'Not enough resource storage space on fleet {locationTo} for {playerFrom} to transfer')
+
+            # if the transfer can still be done, do so
             if canTransfer:
-                transferredResources = None
-                # then take resources if enough from the specified location
-                if locationFrom == 'planet' and playerFrom['resources'] >= amount:
-                    transferredResources = amount
-                    playerFrom['resources'] -= amount
-                elif locationFrom in playerFrom['fleets'] and playerFrom['fleets'][locationFrom]['resources'] >= amount:
-                    transferredResources = amount
-                    playerFrom['fleets'][locationFrom]['resources'] -= amount
-                # if there was not enough then the fleet does not exist or there was not enough resources
+                # take the resources from the specified place
+                if locationFrom == planet:
+                    localResources[playerFrom] -= amount
                 else:
-                    print('Not enough resources to transfer or Fleet does not exist, did you misspell anything?')
+                    localFleets[playerFrom][locationFrom]['resources'] -= amount
+                # then give then to the correct place
+                if locationTo == planet:
+                    localResources[playerTo] += amount
+                else:
+                    localFleets[playerTo][locationTo]['resources'] += amount
+                # return a message about the transfer
+                print(f"Transfer on {planet} from {playerFrom} to {playerTo} completed")
 
-                # if there were some resources taken
-                if transferredResources is not None:
-                    # then give then to the correct places
-                    if locationTo == 'planet':
-                        playerFrom['resources'] += transferredResources
-                        print(f"Transfer on {planet} from {ownerFrom} to {ownerTo} completed")
-                    elif locationTo in playerTo['fleets']:
-                        playerTo['fleets'][locationTo]['resources'] += transferredResources
-                        print(f"Transfer on {planet} from {ownerFrom} to {ownerTo} completed")
-                    else:
-                        print('This should never happen, if it does something has gone wrong. Contact Starficz and cheat in resources '
-                              'for the player that is giving resources as the resources have now been voided')
-            else:
-                print('Not enough resources to transfer, not enough space on target,'
-                      ' or Fleet does not exist, did you misspell anything?')
         # if there was a KeyError then some planet or player does not exist
         except KeyError:
             # therefore return a message informing that a planet or player does not exist
             print('Some field (planet / player) does not exist, did you misspell anything?')
+
+    # not refactored below this point
 
     def hohmann_fleet_transfer(self, owner: str, fleetName: str, planetFrom: str, planetTo: str):
         """ Queue a hohmann fleet transfer from one planet to another
@@ -384,7 +411,7 @@ class Commands:
         try:
             localPlayer = self.campaign['planets'][planetFrom]['players'][owner]
             localFleet = localPlayer['fleets'][fleetName]
-            fleetStats = self.__calculate_fleet_stats(localFleet)
+            fleetStats = self.calculate_fleet_stats(localFleet)
             travelDistance = self.campaign['planets'][planetFrom]['connections'][planetTo]
             travelCost = (fleetStats[2] / self.hohmannMassRatio) * travelDistance
             if travelCost <= localFleet['resources']:
