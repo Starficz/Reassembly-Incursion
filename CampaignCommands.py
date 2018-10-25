@@ -550,9 +550,10 @@ class Commands:
                     print(f"Production of {shipName} (x{shipAmount}) on {planet} for {player} has finished")
                 localPlanet['production'][player].clear()
 
-        self.campaign['turn'] += 1
         # notify the user that the next turn is starting
-        print(f"--------------------start turn {self.campaign['turn']}--------------------")
+        print(f"--------------------start turn {self.campaign['turn'] + 1}--------------------")
+        # advance the turn count
+        self.campaign['turn'] += 1
         # save the campaign (look into saving more times and opening/closing the shelve dynamically as users will not input all commands
         # instantly like the controller currently does)
         self.campaign.sync()
