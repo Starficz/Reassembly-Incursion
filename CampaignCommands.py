@@ -223,6 +223,36 @@ class Commands:
             # therefore return a message informing that a planet or player does not exist
             print('Some field (planet or player) does not exist, did you misspell anything?')
 
+    def void_ship(self, planet: str, player: str, ship: str, amount: int):
+        """ Void ship(s) removing the amount specified from the game
+        :param planet: planet of the ship(s)
+        :param player: player who controls the ship(s)
+        :param ship: name of the ship(s)
+        :param amount: amount of ships(s) scraped
+        :return: None
+        """
+        try:
+            canVoid = True
+
+            localShips = self.campaign['planets'][planet]['ships']
+            if 'ships' not in self.campaign and ship not in self.campaign['ships']:
+                canVoid = False
+                print('Ship not recognized, did you misspell anything?')
+            elif amount > localShips[player][ship]:
+                canVoid = False
+                print(f'Not enough ships on {planet} to void')
+
+            if canVoid:
+                if localShips[player][ship] == amount:
+                    del localShips[player][ship]
+                else:
+                    localShips[player][ship] -= amount
+
+                print(f'Ship {ship} (x{amount}) voided on {planet} for {player}')
+
+        except KeyError:
+            print('Some field (planet or player) does not exist, did you misspell anything?')
+
     def scrap_ship(self, planet: str, player: str, ship: str, amount: int):
         """ Scrap ship(s) restoring the scrap ratio to the player who owns it
         :param planet: planet of the ship(s)
@@ -552,10 +582,45 @@ class Commands:
             for fleet in atDestination:
                 del self.campaign['players'][player]['transits'][fleet]
 
-            # Battle logic goes here for wanted turn order
+        for planet in self.campaign['planets']:
+            localPlanet = self.campaign['planets'][planet]
 
-            for planet in self.campaign['planets']:
-                localPlanet = self.campaign['planets'][planet]
+            # Battle logic
+            factionsOnPlanet = {}
+            for player in self.campaign['players']:
+                faction = self.campaign['players'][player]['faction']
+
+                for ship in localPlanet['ships'][player]:
+                    if faction not in factionsOnPlanet:
+                        factionsOnPlanet[faction] = {}
+                    if ship in factionsOnPlanet[faction]:
+                        factionsOnPlanet[faction][ship] += localPlanet['ships'][player][ship]
+                    else:
+                        factionsOnPlanet[faction][ship] = localPlanet['ships'][player][ship]
+
+                for fleet in localPlanet['fleets'][player]:
+                    localFleet = localPlanet['fleets'][player][fleet]
+                    for ship in localFleet['ships']:
+                        if faction not in factionsOnPlanet:
+                            factionsOnPlanet[faction] = {}
+                        if ship in factionsOnPlanet[faction]:
+                            factionsOnPlanet[faction][ship] += localFleet['ships'][ship]
+                        else:
+                            factionsOnPlanet[faction][ship] = localFleet['ships'][ship]
+
+            if len(factionsOnPlanet) > 1:
+                factions = ''
+                for faction in factionsOnPlanet:
+                    factions += faction + ', '
+                print(f"Battle on {planet} between {factions[0:-2]}")
+                for faction in factionsOnPlanet:
+                    print(f'Ships for {faction}:')
+                    for shipName, shipAmount in factionsOnPlanet[faction].items():
+                        print(f'{shipName} (x{shipAmount})')
+
+            # need a pause here to allow user to run reassembly and run the battle
+
+            for player in self.campaign['players']:
 
                 # add income to all players
                 if self.campaign['players'][player]['faction'] == localPlanet['factionControl']:
