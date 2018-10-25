@@ -235,6 +235,35 @@ class Commands:
             # therefore return a message informing that a planet or player does not exist
             print('Some field (planet or player) does not exist, did you misspell anything?')
 
+    def scrap_ship(self, planet: str, player: str, ship: str, amount: int):
+        """ Scrap ship(s) restoring the scrap ratio to the player who owns it
+        :param planet: planet of the ship(s)
+        :param player: player who controls the ship(s)
+        :param ship: name of the ship(s)
+        :param amount: amount of ships(s) scraped
+        :return: None
+        """
+        try:
+            canScrap = True
+
+            localShips = self.campaign['planets'][planet]['ships']
+            localResources = self.campaign['planets'][planet]['resources']
+            if 'ships' not in self.campaign and ship not in self.campaign['ships']:
+                canScrap = False
+                print('Ship not recognized, did you misspell anything?')
+            elif amount > localShips[player][ship]:
+                canScrap = False
+                print(f'Not enough ships on {planet} to scrap')
+
+            if canScrap:
+                localShips[player][ship] -= amount
+                resourcesRecovered = amount * self.campaign['ships'][ship]['points'] * self.scrapRatio
+                localResources[player] += resourcesRecovered
+                print(f'Ship {ship} (x{amount}) scraped returning {resourcesRecovered} resources on {planet} for {player}')
+
+        except KeyError:
+            print('Some field (planet or player) does not exist, did you misspell anything?')
+
     def make_fleet(self, planet: str, player: str, fleet: str, ships: dict):
         """ Make a fleet for a player on a planet with ship(s) owned by said player and on said planet
         :param planet: planet of the fleet
@@ -468,37 +497,6 @@ class Commands:
                 print(f"Not enough resources on fleet {fleetName} to move from {planetFrom} to {planetTo}")
         except KeyError:
             print('Some field (planet / player/ fleet) does not exist, did you misspell anything?')
-
-    def scrap_ship(self, planet: str, player: str, ship: str, amount: int):
-        """ Scrap ship(s) restoring the scrap ratio to the player who owns it
-        :param planet: planet of the ship(s)
-        :param player: player who controls the ship(s)
-        :param ship: name of the ship(s)
-        :param amount: amount of ships(s) scraped
-        :return: None
-        """
-        try:
-            canScrap = True
-
-            localShips = self.campaign['planets'][planet]['ships']
-            localResources = self.campaign['planets'][planet]['resources']
-            if 'ships' not in self.campaign and ship not in self.campaign['ships']:
-                canScrap = False
-                print('Ship not recognized, did you misspell anything?')
-            elif amount > localShips[player][ship]:
-                canScrap = False
-                print(f'Not enough ships on {planet} to scrap')
-
-            if canScrap:
-                localShips[player][ship] -= amount
-                resourcesRecovered = amount * self.campaign['ships'][ship]['points'] * self.scrapRatio
-                localResources[player] += resourcesRecovered
-                print(f'Ship {ship} (x{amount}) scraped returning {resourcesRecovered} resources on {planet} for {player}')
-
-        except KeyError:
-            print('Some field (planet or player) does not exist, did you misspell anything?')
-
-    # Advanced Turn still is not factored for the new data structure, but everything else should be
 
     def advance_turn(self):
         # notify the user for turn end
