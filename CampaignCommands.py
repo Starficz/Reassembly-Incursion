@@ -1,20 +1,24 @@
+import atexit
 import shelve
 
 
 class Commands:
 
     def __init__(self, file: str):
-        self.campaign = shelve.open(file, writeback=True)
+        campaign = shelve.open(file, writeback=True)
+        self.campaign = campaign
         self.scrapRatio = 0.5
         self.resourceGenerationRatio = 10
         self.brachistochroneMassRatio = 15
         self.hohmannMassRatio = 30
 
+        def exit_close():
+            campaign.close()
+
+        atexit.register(exit_close)
+
     def open_campaign(self, file: str):
         self.campaign = shelve.open(file, writeback=True)
-
-    def close_campaign(self):
-        self.campaign.close()
 
     def init_campaign(self):
         """ Initializes a campaign by adding the base dicts
@@ -60,7 +64,7 @@ class Commands:
             localPlanet['ships'][player] = {}
             localPlanet['fleets'][player] = {}
             localPlanet['production'][player] = {}
-            
+
         # return a message for the added planet
         print(f"Planet {planet} added")
 
@@ -471,12 +475,22 @@ class Commands:
         :return: None
         """
         try:
+            canTransfer = True
             localFleets = self.campaign['planets'][planetFrom]['fleets']
             localPlayer = self.campaign['players'][player]
-            travelDistance = self.campaign['planets'][planetFrom]['connections'][planetTo]
             costPerUnit = self.calculate_fleet_stats(localFleets[player][fleet])['fleetMass'] / self.hohmannMassRatio
-            travelCost = costPerUnit * travelDistance
-            if travelCost <= localFleets[player][fleet]['resources']:
+
+            if planetTo not in self.campaign['planets'][planetFrom]['connections']:
+                canTransfer = False
+                print(f'No connection between {planetFrom} and {planetTo} exists')
+            else:
+                travelDistance = self.campaign['planets'][planetFrom]['connections'][planetTo]
+                travelCost = costPerUnit * travelDistance
+                if travelCost > localFleets[player][fleet]['resources']:
+                    canTransfer = False
+                    print(f"Not enough resources on fleet {fleet} to move from {planetFrom} to {planetTo}")
+
+            if canTransfer:
                 localPlayer['transits'][fleet] = {}
                 transitFleet = localPlayer['transits'][fleet]
 
@@ -489,8 +503,7 @@ class Commands:
 
                 del localFleets[player][fleet]
                 print(f'Fleet {fleet} ({player}) queued for transit from {planetFrom} to {planetTo}')
-            else:
-                print(f"Not enough resources on fleet {fleet} to move from {planetFrom} to {planetTo}")
+
         except KeyError:
             print('Some field (planet / player/ fleet) does not exist, did you misspell anything?')
 
@@ -503,12 +516,24 @@ class Commands:
         :return: None
         """
         try:
+            canTransfer = True
             localFleets = self.campaign['planets'][planetFrom]['fleets']
             localPlayer = self.campaign['players'][player]
-            travelDistance = self.campaign['planets'][planetFrom]['connections'][planetTo]
             costPerUnit = self.calculate_fleet_stats(localFleets[player][fleet])['fleetMass'] / self.brachistochroneMassRatio
-            travelCost = costPerUnit * travelDistance
-            if travelCost <= localFleets[player][fleet]['resources']:
+
+            if planetTo not in self.campaign['planets'][planetFrom]['connections']:
+                canTransfer = False
+                travelDistance = None
+                travelCost = None
+                print(f'No connection between {planetFrom} and {planetTo} exists')
+            else:
+                travelDistance = self.campaign['planets'][planetFrom]['connections'][planetTo]
+                travelCost = costPerUnit * travelDistance
+                if travelCost > localFleets[player][fleet]['resources']:
+                    canTransfer = False
+                    print(f"Not enough resources on fleet {fleet} to move from {planetFrom} to {planetTo}")
+
+            if canTransfer:
                 if travelDistance == 1:
                     localFleets[player][fleet]['resources'] -= travelCost
                     self.campaign['planets'][planetTo]['fleets'][player][fleet] = localFleets[player][fleet]
@@ -527,8 +552,7 @@ class Commands:
                     print(f'Fleet {fleet} ({player}) queued for transit from {planetFrom} to {planetTo}')
 
                 del localFleets[player][fleet]
-            else:
-                print(f"Not enough resources on fleet {fleet} to move from {planetFrom} to {planetTo}")
+
         except KeyError:
             print('Some field (planet / player/ fleet) does not exist, did you misspell anything?')
 
