@@ -105,7 +105,7 @@ class Commands:
 
         # add the faction to the dict if it does not exist
         if player not in self.campaign['players']:
-            self.campaign['players'][player] = {'faction': faction, 'transit': []}
+            self.campaign['players'][player] = {'faction': faction, 'transit': {}}
 
         # then for every planet
         for planet in self.campaign['planets']:
@@ -357,8 +357,6 @@ class Commands:
             # assign needed vars
             localFleets = self.campaign['planets'][planet]['fleets']
             localResources = self.campaign['planets'][planet]['resources']
-            playerFrom = self.campaign['planets'][planet]['players'][playerFrom]
-            playerTo = self.campaign['planets'][planet]['players'][playerTo]
 
             # test if the transfer is valid
             if locationFrom != planet and locationFrom not in localFleets[playerFrom]:
@@ -373,8 +371,9 @@ class Commands:
             elif locationFrom in localFleets[playerFrom] and amount > localFleets[playerFrom][locationFrom]['resources']:
                 canTransfer = False
                 print(f'Not enough resources in Fleet {locationFrom} for {playerFrom} to transfer')
-            elif locationTo in localFleets[playerTo] and amount > (self.calculate_fleet_stats(locationTo)['fleetStorage'] -
-                                                                   localFleets[playerTo][locationTo]['resources']):
+            elif locationTo in localFleets[playerTo] and \
+                    amount > (self.calculate_fleet_stats(localFleets[playerTo][locationTo])['fleetStorage'] -
+                              localFleets[playerTo][locationTo]['resources']):
                 canTransfer = False
                 print(f'Not enough resource storage space on fleet {locationTo} for {playerFrom} to transfer')
 
@@ -391,7 +390,7 @@ class Commands:
                 else:
                     localFleets[playerTo][locationTo]['resources'] += amount
                 # return a message about the transfer
-                print(f"Transfer on {planet} from {playerFrom} to {playerTo} completed")
+                print(f"Transfer of {amount} on {planet} from {locationFrom} ({playerFrom}) to {locationTo} ({playerTo}) completed")
 
         # if there was a KeyError then some planet or player does not exist
         except KeyError:
@@ -415,8 +414,16 @@ class Commands:
             costPerUnit = self.calculate_fleet_stats(localFleets[player][fleetName])['fleetMass'] / self.hohmannMassRatio
             travelCost = costPerUnit * travelDistance
             if travelCost <= localFleets[player][fleetName]['resources']:
-                localPlayer['transit'].append({'planetFrom': planetFrom, 'planetTo': planetTo, 'transitType': 'hohmann', 'progress': 0,
-                                               'costPerUnit': costPerUnit, 'fleet': localFleets[player][fleetName], 'name': fleetName})
+                localPlayer['transit'][fleetName] = {}
+                transitFleet = localPlayer['transit'][fleetName]
+
+                transitFleet['planetFrom'] = planetFrom
+                transitFleet['planetTo'] = planetTo
+                transitFleet['transitType'] = 'hohmann'
+                transitFleet['progress'] = 0
+                transitFleet['costPerUnit'] = costPerUnit
+                transitFleet['fleet'] = localFleets[player][fleetName]
+
                 del localFleets[player][fleetName]
                 print(f'Fleet {fleetName} queued for transit from {planetFrom} to {planetTo}')
             else:
@@ -444,9 +451,16 @@ class Commands:
                     self.campaign['planets'][planetTo]['fleets'][player][fleetName] = localFleets[player][fleetName]
                     print(f'Fleet {fleetName} arrived on {planetTo} from {planetFrom}')
                 else:
-                    localPlayer['transit'].append(
-                        {'planetFrom': planetFrom, 'planetTo': planetTo, 'transitType': 'brachistochrone', 'progress': 0,
-                         'costPerUnit': costPerUnit, 'fleet': localFleets[player][fleetName], 'name': fleetName})
+                    localPlayer['transit'][fleetName] = {}
+                    transitFleet = localPlayer['transit'][fleetName]
+
+                    transitFleet['planetFrom'] = planetFrom
+                    transitFleet['planetTo'] = planetTo
+                    transitFleet['transitType'] = 'brachistochrone'
+                    transitFleet['progress'] = 0
+                    transitFleet['costPerUnit'] = costPerUnit
+                    transitFleet['fleet'] = localFleets[player][fleetName]
+
                     print(f'Fleet {fleetName} queued for transit from {planetFrom} to {planetTo}')
 
                 del localFleets[player][fleetName]
@@ -473,7 +487,7 @@ class Commands:
                 print('Ship not recognized, did you misspell anything?')
             elif amount > localShips[player][ship]:
                 canScrap = False
-                print(f'Non enough ships on {planet} to scrap')
+                print(f'Not enough ships on {planet} to scrap')
 
             if canScrap:
                 localShips[player][ship] -= amount
@@ -491,49 +505,54 @@ class Commands:
         print(f"--------------------turn {self.campaign['turn']} ended--------------------")
         print(f"Calculating end of turn {self.campaign['turn']} and start of turn {self.campaign['turn'] + 1}")
 
-        # bunch of nested for loops to hit every player on every planet
-        for faction in self.campaign['factions']:
+        for player in self.campaign['players']:
+
+            # advance fleet transits for every player
+            atDestination = []
+            for fleet in self.campaign['players'][player]['transit']:
+                transit = self.campaign['players'][player]['transit'][fleet]
+                distance = self.campaign['planets'][transit['planetFrom']]['connections'][transit['planetTo']]
+
+                if transit['transitType'] == 'hohmann':
+                    transit['fleet']['resources'] -= transit['costPerUnit']
+                    transit['progress'] += 1
+
+                elif transit['transitType'] == 'brachistochrone':
+                    transit['fleet']['resources'] -= (transit['costPerUnit'] * 2)
+                    transit['progress'] += 2
+
+                if transit['progress'] >= distance:
+                    self.campaign['planets'][transit['planetTo']]['fleets'][player][fleet] = transit['fleet']
+                    print(f"Fleet {fleet} ({player}) has arrived at {transit['planetTo']} from {transit['planetFrom']}")
+                    atDestination.append(fleet)
+                else:
+                    print(f"Fleet {fleet} ({player}) is transfering to {transit['planetTo']} from {transit['planetFrom']}, "
+                          f"Progress: {transit['progress']}/{distance}")
+            # clean up
+            for fleet in atDestination:
+                del self.campaign['players'][player]['transit'][fleet]
+
+            # Battle logic goes here for wanted turn order
+
             for planet in self.campaign['planets']:
                 localPlanet = self.campaign['planets'][planet]
-                for player in self.campaign['factions'][faction]:
-                    localPlayer = localPlanet['players'][player]
-                    # note: look into moving all logic here into their own private methods for cleaner code
 
-                    # add resources to whichever faction owns the team
-                    if faction == localPlanet['factionControl']:
-                        totalGenerated = localPlanet['value'] * self.resourceGenerationRatio
-                        localPlayer['resources'] += totalGenerated / len(self.campaign['factions'][faction])
+                # add income to all players
+                if self.campaign['players'][player]['faction'] == localPlanet['factionControl']:
+                    localPlanet['resources'][player] += localPlanet['value']
 
-                    # move fleets transferring to another body
-                    for fleet in localPlayer['transit']:
-                        if fleet['transitType'] == 'hohmann':
-                            fleet['progress'] += 1
-                        elif fleet['transitType'] == 'brachistochrone':
-                            fleet['progress'] += 2
+                # produce ships for all players
+                for shipName, shipAmount in localPlanet['production'][player].items():
+                    if shipName in localPlanet['ships'][player]:
+                        localPlanet['ships'][player][shipName] += shipAmount
+                    else:
+                        localPlanet['ships'][player][shipName] = shipAmount
+                    print(f"Production of {shipName} (x{shipAmount}) on {planet} for {player} has finished")
+                localPlanet['production'][player].clear()
 
-                        if fleet['progress'] >= localPlanet['connections'][fleet['planetTo']]:
-                            self.campaign['planets'][fleet['planetTo']]['players'][player]['fleets'][fleet['name']] = fleet['fleet']
-                            localPlayer['transit'].remove(fleet)
-                            print(f"Fleet {fleet['name']} has arrived at {fleet['planetTo']} from {planet}")
-                        else:
-                            print(f"Fleet {fleet['name']} has traveled {fleet['progress']} out of "
-                                  f"{self.campaign['planets'][planet]['connections'][fleet['planetTo']]} to "
-                                  f"{fleet['planetTo']} from {planet}")
-
-                    # future battle logic goes here for wanted turn order
-
-                    # finish production of ships queued last turn
-                    for ship, amount in localPlayer['production'].items():
-                        if ship in localPlayer['ships']:
-                            localPlayer['ships'][ship] += amount
-                        else:
-                            localPlayer['ships'][ship] = amount
-                        print(f"Production of {ship}, (x{amount}) has been finished at {planet}")
-                    # reset the production queue
-                    localPlayer['production'] = {}
         self.campaign['turn'] += 1
         # notify the user that the next turn is starting
-        print(f"--------------------start turn {self.campaign['turn'] + 1}--------------------")
+        print(f"--------------------start turn {self.campaign['turn']}--------------------")
         # save the campaign (look into saving more times and opening/closing the shelve dynamically as users will not input all commands
         # instantly like the controller currently does)
         self.campaign.sync()
