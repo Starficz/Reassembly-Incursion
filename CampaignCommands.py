@@ -10,18 +10,6 @@ class Commands:
         self.brachistochroneMassRatio = 15
         self.hohmannMassRatio = 30
 
-    def calculate_fleet_stats(self, fleet: dict):
-        totalPoints = 0
-        totalResourceStorage = 0
-        totalMass = 0
-        for shipNameNeeded, shipAmount in fleet['ships'].items():
-            for shipName, shipStats in self.campaign['ships'].items():
-                if shipName == shipNameNeeded:
-                    totalPoints += (shipStats['points'] * shipAmount)
-                    totalResourceStorage += (shipStats['resStorage'] * shipAmount)
-                    totalMass += (shipStats['mass'] * shipAmount)
-        return {'fleetPoints': totalPoints, 'fleetStorage': totalResourceStorage, 'fleetMass': totalMass}
-
     def open_campaign(self, file: str):
         self.campaign = shelve.open(file, writeback=True)
 
@@ -256,7 +244,11 @@ class Commands:
                 print(f'Not enough ships on {planet} to scrap')
 
             if canScrap:
-                localShips[player][ship] -= amount
+                if localShips[player][ship] == amount:
+                    del localShips[player][ship]
+                else:
+                    localShips[player][ship] -= amount
+
                 resourcesRecovered = amount * self.campaign['ships'][ship]['points'] * self.scrapRatio
                 localResources[player] += resourcesRecovered
                 print(f'Ship {ship} (x{amount}) scraped returning {resourcesRecovered} resources on {planet} for {player}')
@@ -366,6 +358,18 @@ class Commands:
         except KeyError:
             # therefore return a message informing that a planet or player does not exist
             print('Some field (planet / player) does not exist, did you misspell anything?')
+
+    def calculate_fleet_stats(self, fleet: dict):
+        totalPoints = 0
+        totalResourceStorage = 0
+        totalMass = 0
+        for shipNameNeeded, shipAmount in fleet['ships'].items():
+            for shipName, shipStats in self.campaign['ships'].items():
+                if shipName == shipNameNeeded:
+                    totalPoints += (shipStats['points'] * shipAmount)
+                    totalResourceStorage += (shipStats['resStorage'] * shipAmount)
+                    totalMass += (shipStats['mass'] * shipAmount)
+        return {'fleetPoints': totalPoints, 'fleetStorage': totalResourceStorage, 'fleetMass': totalMass}
 
     def transfer_resources(self, planet: str, amount: int, playerFrom: str, locationFrom: str, playerTo: str, locationTo):
         """ Transfer resources between 2 resource pools (on fleet or planet) between any 2 players (can be the same player)
