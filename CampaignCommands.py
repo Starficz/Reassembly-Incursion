@@ -105,7 +105,7 @@ class Commands:
 
         # add the faction to the dict if it does not exist
         if player not in self.campaign['players']:
-            self.campaign['players'][player] = {'faction': faction, 'transit': {}}
+            self.campaign['players'][player] = {'faction': faction, 'transits': {}}
 
         # then for every planet
         for planet in self.campaign['planets']:
@@ -428,10 +428,10 @@ class Commands:
 
     # not refactored below this point
 
-    def hohmann_fleet_transfer(self, player: str, fleetName: str, planetFrom: str, planetTo: str):
+    def hohmann_fleet_transfer(self, player: str, fleet: str, planetFrom: str, planetTo: str):
         """ Queue a hohmann fleet transfer from one planet to another
         :param player: player who controls the fleet
-        :param fleetName: name of the fleet
+        :param fleet: name of the fleet
         :param planetFrom: planet the fleet is currently at
         :param planetTo: planet the fleet is traveling to
         :return: None
@@ -440,30 +440,30 @@ class Commands:
             localFleets = self.campaign['planets'][planetFrom]['fleets']
             localPlayer = self.campaign['players'][player]
             travelDistance = self.campaign['planets'][planetFrom]['connections'][planetTo]
-            costPerUnit = self.calculate_fleet_stats(localFleets[player][fleetName])['fleetMass'] / self.hohmannMassRatio
+            costPerUnit = self.calculate_fleet_stats(localFleets[player][fleet])['fleetMass'] / self.hohmannMassRatio
             travelCost = costPerUnit * travelDistance
-            if travelCost <= localFleets[player][fleetName]['resources']:
-                localPlayer['transit'][fleetName] = {}
-                transitFleet = localPlayer['transit'][fleetName]
+            if travelCost <= localFleets[player][fleet]['resources']:
+                localPlayer['transits'][fleet] = {}
+                transitFleet = localPlayer['transits'][fleet]
 
                 transitFleet['planetFrom'] = planetFrom
                 transitFleet['planetTo'] = planetTo
                 transitFleet['transitType'] = 'hohmann'
                 transitFleet['progress'] = 0
                 transitFleet['costPerUnit'] = costPerUnit
-                transitFleet['fleet'] = localFleets[player][fleetName]
+                transitFleet['fleet'] = localFleets[player][fleet]
 
-                del localFleets[player][fleetName]
-                print(f'Fleet {fleetName} queued for transit from {planetFrom} to {planetTo}')
+                del localFleets[player][fleet]
+                print(f'Fleet {fleet} ({player}) queued for transit from {planetFrom} to {planetTo}')
             else:
-                print(f"Not enough resources on fleet {fleetName} to move from {planetFrom} to {planetTo}")
+                print(f"Not enough resources on fleet {fleet} to move from {planetFrom} to {planetTo}")
         except KeyError:
             print('Some field (planet / player/ fleet) does not exist, did you misspell anything?')
 
-    def brachistochrone_fleet_transfer(self, player: str, fleetName: str, planetFrom: str, planetTo: str):
+    def brachistochrone_fleet_transfer(self, player: str, fleet: str, planetFrom: str, planetTo: str):
         """ Queue a brachistochrone fleet transfer from one planet to another, special case for distance 1 transfers
         :param player: player who controls the fleet
-        :param fleetName: name of the fleet
+        :param fleet: name of the fleet
         :param planetFrom: planet the fleet is currently at
         :param planetTo: planet the fleet is traveling to
         :return: None
@@ -472,31 +472,49 @@ class Commands:
             localFleets = self.campaign['planets'][planetFrom]['fleets']
             localPlayer = self.campaign['players'][player]
             travelDistance = self.campaign['planets'][planetFrom]['connections'][planetTo]
-            costPerUnit = self.calculate_fleet_stats(localFleets[player][fleetName])['fleetMass'] / self.brachistochroneMassRatio
+            costPerUnit = self.calculate_fleet_stats(localFleets[player][fleet])['fleetMass'] / self.brachistochroneMassRatio
             travelCost = costPerUnit * travelDistance
-            if travelCost <= localFleets[player][fleetName]['resources']:
+            if travelCost <= localFleets[player][fleet]['resources']:
                 if travelDistance == 1:
-                    localFleets[player][fleetName]['resources'] -= travelCost
-                    self.campaign['planets'][planetTo]['fleets'][player][fleetName] = localFleets[player][fleetName]
-                    print(f'Fleet {fleetName} arrived on {planetTo} from {planetFrom}')
+                    localFleets[player][fleet]['resources'] -= travelCost
+                    self.campaign['planets'][planetTo]['fleets'][player][fleet] = localFleets[player][fleet]
+                    print(f'Fleet {fleet} arrived on {planetTo} from {planetFrom}')
                 else:
-                    localPlayer['transit'][fleetName] = {}
-                    transitFleet = localPlayer['transit'][fleetName]
+                    localPlayer['transits'][fleet] = {}
+                    transitFleet = localPlayer['transits'][fleet]
 
                     transitFleet['planetFrom'] = planetFrom
                     transitFleet['planetTo'] = planetTo
                     transitFleet['transitType'] = 'brachistochrone'
                     transitFleet['progress'] = 0
                     transitFleet['costPerUnit'] = costPerUnit
-                    transitFleet['fleet'] = localFleets[player][fleetName]
+                    transitFleet['fleet'] = localFleets[player][fleet]
 
-                    print(f'Fleet {fleetName} queued for transit from {planetFrom} to {planetTo}')
+                    print(f'Fleet {fleet} ({player}) queued for transit from {planetFrom} to {planetTo}')
 
-                del localFleets[player][fleetName]
+                del localFleets[player][fleet]
             else:
-                print(f"Not enough resources on fleet {fleetName} to move from {planetFrom} to {planetTo}")
+                print(f"Not enough resources on fleet {fleet} to move from {planetFrom} to {planetTo}")
         except KeyError:
             print('Some field (planet / player/ fleet) does not exist, did you misspell anything?')
+
+    def turn_fleet(self, player: str, fleet: str):
+        """ Turn a fleet around that is currently in transit 
+        :param player: player who controls the fleet
+        :param fleet: name of the fleet
+        :return: None
+        """
+        if fleet in self.campaign['players'][player]['transits']:
+            transit = self.campaign['players'][player]['transits'][fleet]
+            distance = self.campaign['planets'][transit['planetFrom']]['connections'][transit['planetTo']]
+            transit['progress'] = distance - transit['progress']
+            transit['planetFrom'], transit['planetTo'] = transit['planetTo'], transit['planetFrom']
+            if transit['progress'] >= distance:
+                self.campaign['planets'][transit['planetTo']]['fleets'][player][fleet] = transit['fleet']
+                print(f"Fleet {fleet} ({player}) has canceled transit from {transit['planetFrom']}")
+                del self.campaign['players'][player]['transits'][fleet]
+        else:
+            print('Some field (player / fleet) does not exist, did you misspell anything?')
 
     def advance_turn(self):
         # notify the user for turn end
@@ -507,8 +525,8 @@ class Commands:
 
             # advance fleet transits for every player
             atDestination = []
-            for fleet in self.campaign['players'][player]['transit']:
-                transit = self.campaign['players'][player]['transit'][fleet]
+            for fleet in self.campaign['players'][player]['transits']:
+                transit = self.campaign['players'][player]['transits'][fleet]
                 distance = self.campaign['planets'][transit['planetFrom']]['connections'][transit['planetTo']]
 
                 if transit['transitType'] == 'hohmann':
@@ -528,7 +546,7 @@ class Commands:
                           f"Progress: {transit['progress']}/{distance}")
             # clean up
             for fleet in atDestination:
-                del self.campaign['players'][player]['transit'][fleet]
+                del self.campaign['players'][player]['transits'][fleet]
 
             # Battle logic goes here for wanted turn order
 
