@@ -700,7 +700,7 @@ class Commands:
         self.campaign.sync()
 
     def get_details(self, arg):
-        self.list(arg)
+        islist = self.list(arg)
         if arg in self.campaign['planets']:
             print(self.campaign['planets'][arg])
         elif arg in self.campaign['players']:
@@ -708,13 +708,18 @@ class Commands:
         elif arg in self.campaign['ships']:
             print(self.campaign['ships'][arg])
         else:
-            print('Field does not exist, did you misspell anything?')
+            if islist == False:
+                print('Field does not exist, did you misspell anything?')
 
     def list(self, arg):
         larg = arg.lower()
-        if larg == 'planets':
-            print(self.campaign['planets'])
-        if larg == 'players':
-            print(self.campaign['players'])
-        if larg == 'ships':
-            print(self.campaign['ships'])
+        try:
+            for key in self.campaign[larg]:
+                print(key)
+            return True
+        except KeyError:
+            # therefore return a message informing that a planet or player does not exist
+            # Commented out printing of error message, should be handled by get_details().
+            # print('Some field (planet or player) does not exist, did you misspell anything?')
+            pass
+        return False
