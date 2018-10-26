@@ -695,3 +695,13 @@ class Commands:
         # save the campaign (look into saving more times and opening/closing the shelve dynamically as users will not input all commands
         # instantly like the controller currently does)
         self.campaign.sync()
+
+    def get_details(self, arg):
+        if arg in self.campaign['planets']:
+            print(self.campaign['planets'][arg])
+        elif arg in self.campaign['players']:
+            print(self.campaign['players'][arg])
+        elif arg in self.campaign['ships']:
+            print(self.campaign['ships'][arg])
+        else:
+            print('Field does not exist, did you misspell anything?')

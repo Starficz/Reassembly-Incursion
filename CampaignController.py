@@ -183,6 +183,9 @@ class IncursionShell(Cmd):
         """Start the next turn by adding income and building ships that have been queued (don't call this before end_turn)"""
         self.campaign.start_turn()
 
+    def do_get_details(self, arg):
+        """Prints out the details of the input (planet, player, or ship). This is a raw print of the dict, so its not pretty"""
+        self.campaign.get_details(arg)
 
 if __name__ == '__main__':
     print("WARNING, this shell runs eval on all arguments so its possible to do really dumb things. Don't do those please.")
