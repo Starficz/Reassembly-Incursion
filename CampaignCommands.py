@@ -21,6 +21,9 @@ class Commands:
         self.campaign = shelve.open(file, writeback=True)
 
     def close_campaign(self):
+        """ Writes and closes campaign shelve.
+        :return: None
+        """
         self.campaign.close()
 
     def init_campaign(self):
