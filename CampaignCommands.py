@@ -708,3 +708,12 @@ class Commands:
             print(self.campaign['ships'][arg])
         else:
             print('Field does not exist, did you misspell anything?')
+
+    def list(self, arg):
+        larg = arg.lower()
+        if larg == 'planets':
+            print(self.campaign['planets'])
+        if larg == 'players':
+            print(self.campaign['players'])
+        if larg == 'ships':
+            print(self.campaign['ships'])
