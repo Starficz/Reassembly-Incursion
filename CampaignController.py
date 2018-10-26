@@ -8,7 +8,7 @@ class IncursionShell(Cmd):
         Cmd.__init__(self)
         self.campaign = Commands(file)
 
-    def do_exit(self):
+    def do_exit(self, arg):
         """Exits the program."""
         self.campaign.close_campaign()
         print("Exiting the program.")
