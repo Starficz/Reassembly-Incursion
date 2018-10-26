@@ -2,6 +2,9 @@ from cmd import Cmd
 
 from CampaignCommands import Commands
 
+from os import listdir
+from subprocess import run
+
 
 class IncursionShell(Cmd):
     def __init__(self, file: str):
@@ -190,6 +193,24 @@ class IncursionShell(Cmd):
 if __name__ == '__main__':
     print("WARNING, this shell runs eval on all arguments so its possible to do really dumb things. Don't do those please.")
     print("Enter \"help\" or \"?\" in the terminal to show a list of commands.")
+
+#    # No save file handling:
+#    # Checking existance of 'IncursionSave' in current directory.
+#    if 'IncursionSave' not in listdir():
+#        print()
+#        print("An Incursion campaign save file wasn't found in this directory.")
+#        print("Would you like to initalize a new Incursion Campaign save file?")
+#        userinput = input("\"Yes\"/\"No\"? ")
+#        userinput = userinput.lower()
+#        if userinput == ("yes" or "y"):
+#            print("Initalizing new Incursion Campaign save...")
+#            run(['./IncursionInit.py'])
+#            print("Done!")
+#        else:
+#            print("No new save was initalized - empty save created.")
+#        print()
+#    # End of save file handling.
+
     Incursion = IncursionShell('IncursionSave')
     Incursion.prompt = '> '
     Incursion.cmdloop('Incursion Console v0.1 alpha')
