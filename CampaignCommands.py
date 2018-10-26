@@ -20,6 +20,9 @@ class Commands:
     def open_campaign(self, file: str):
         self.campaign = shelve.open(file, writeback=True)
 
+    def close_campaign(self):
+        self.campaign.close()
+
     def init_campaign(self):
         """ Initializes a campaign by adding the base dicts
         :return: None
