@@ -700,6 +700,7 @@ class Commands:
         self.campaign.sync()
 
     def get_details(self, arg):
+        self.list(arg)
         if arg in self.campaign['planets']:
             print(self.campaign['planets'][arg])
         elif arg in self.campaign['players']:
