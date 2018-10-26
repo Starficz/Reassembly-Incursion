@@ -189,7 +189,7 @@ class IncursionShell(Cmd):
 
 if __name__ == '__main__':
     print("WARNING, this shell runs eval on all arguments so its possible to do really dumb things. Don't do those please.")
-    print("Type \"?\" in the terminal to show a list of commands.")
+    print("Enter \"?\" in the terminal to show a list of commands.")
     Incursion = IncursionShell('IncursionSave')
     Incursion.prompt = '> '
     Incursion.cmdloop('Incursion Console v0.1 alpha')
