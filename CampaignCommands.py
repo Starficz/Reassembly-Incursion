@@ -176,6 +176,27 @@ class Commands:
             # therefore return a message informing that a planet or player does not exist
             print('Some field (planet or player) does not exist, did you misspell anything?')
 
+    def void_resources(self, planet: str, player: str, amount: int):
+        """ Void resources removing the amount specified from the game
+        :param planet: planet of the voided resources
+        :param player: player the resources are voided
+        :param amount: amount of resources voided
+        :return: None
+        """
+
+        # wrap everything in a try block to catch any KeyErrors
+        try:
+            if self.campaign['planets'][planet]['resources'][player] >= amount:
+                self.campaign['planets'][planet]['resources'][player] -= amount
+                print(f"{amount} resources voided on {planet} for {player}")
+            else:
+                print(f'Not enough resources on {planet} ({player}) to be voided')
+
+        # if there was a KeyError then some planet or player does not exist
+        except KeyError:
+            # therefore return a message informing that a planet or player does not exist
+            print('Some field (planet or player) does not exist, did you misspell anything?')
+
     def make_ship(self, planet: str, player: str, ship: str, amount: int):
         """ Queue production of ship(s) for a player on a planet by spending resources equal to points of the ship(s)
         :param planet: planet of the spawned ship(s)
@@ -564,24 +585,29 @@ class Commands:
         """
         if fleet in self.campaign['players'][player]['transits']:
             transit = self.campaign['players'][player]['transits'][fleet]
-            distance = self.campaign['planets'][transit['planetFrom']]['connections'][transit['planetTo']]
-            transit['progress'] = distance - transit['progress']
-            transit['planetFrom'], transit['planetTo'] = transit['planetTo'], transit['planetFrom']
-            if transit['progress'] >= distance:
-                self.campaign['planets'][transit['planetTo']]['fleets'][player][fleet] = transit['fleet']
-                print(f"Fleet {fleet} ({player}) has canceled transit from {transit['planetFrom']}")
-                del self.campaign['players'][player]['transits'][fleet]
+            travelDistance = self.campaign['planets'][transit['planetFrom']]['connections'][transit['planetTo']]
+            travelCost = transit['progress'] * transit['costPerUnit']
+            if transit['fleet']['resources'] > travelCost:
+                transit['progress'] = travelDistance - transit['progress']
+                transit['planetFrom'], transit['planetTo'] = transit['planetTo'], transit['planetFrom']
+                if transit['progress'] >= travelDistance:
+                    self.campaign['planets'][transit['planetTo']]['fleets'][player][fleet] = transit['fleet']
+                    print(f"Fleet {fleet} ({player}) has canceled transit from {transit['planetFrom']}")
+                    del self.campaign['players'][player]['transits'][fleet]
+                else:
+                    print(f"Fleet {fleet} ({player}) queued for transit from {transit['planetFrom']} to {transit['planetTo']}")
+            else:
+                print(f'Not enough resources on fleet {fleet} to turn around')
         else:
             print('Some field (player / fleet) does not exist, did you misspell anything?')
 
-    def advance_turn(self):
+    def end_turn(self):
         # notify the user for turn end
         print(f"--------------------turn {self.campaign['turn']} ended--------------------")
         print(f"Calculating end of turn {self.campaign['turn']} and start of turn {self.campaign['turn'] + 1}")
 
+        # fleet travel
         for player in self.campaign['players']:
-
-            # advance fleet transits for every player
             atDestination = []
             for fleet in self.campaign['players'][player]['transits']:
                 transit = self.campaign['players'][player]['transits'][fleet]
@@ -606,10 +632,9 @@ class Commands:
             for fleet in atDestination:
                 del self.campaign['players'][player]['transits'][fleet]
 
+        # battles
         for planet in self.campaign['planets']:
             localPlanet = self.campaign['planets'][planet]
-
-            # Battle logic
             factionsOnPlanet = {}
             for player in self.campaign['players']:
                 faction = self.campaign['players'][player]['faction']
@@ -641,9 +666,12 @@ class Commands:
                     print(f'Ships for {faction}:')
                     for shipName, shipAmount in factionsOnPlanet[faction].items():
                         print(f'{shipName} (x{shipAmount})')
+        # advance the turn count
+        self.campaign['turn'] += 1
 
-            # need a pause here to allow user to run reassembly and run the battle
-
+    def start_turn(self):
+        for planet in self.campaign['planets']:
+            localPlanet = self.campaign['planets'][planet]
             for player in self.campaign['players']:
 
                 # add income to all players
@@ -660,9 +688,7 @@ class Commands:
                 localPlanet['production'][player].clear()
 
         # notify the user that the next turn is starting
-        print(f"--------------------start turn {self.campaign['turn'] + 1}--------------------")
-        # advance the turn count
-        self.campaign['turn'] += 1
+        print(f"--------------------start turn {self.campaign['turn']}--------------------")
         # save the campaign (look into saving more times and opening/closing the shelve dynamically as users will not input all commands
         # instantly like the controller currently does)
         self.campaign.sync()
